@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 
 namespace MinimumLevel
 {
-    [BepInPlugin("com.atomic.minimumlevel", "Minimum Level", "1.0.0")]
+    [BepInPlugin("com.atomic.minimumlevel", "Minimum Level", "1.1.0")]
     [BepInProcess("Among Us.exe")]
     public class MinimumLevelPlugin : BasePlugin
     {
