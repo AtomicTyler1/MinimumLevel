@@ -2,8 +2,10 @@
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
+using JetBrains.Annotations;
 using System;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace MinimumLevel
 {
@@ -30,10 +32,13 @@ namespace MinimumLevel
         public GameOptionButton BigDecreaseMinLevelButton = null;
         public GameOptionButton BigIncreaseMaxLevelButton = null;
         public GameOptionButton BigDecreaseMaxLevelButton = null;
+        public GameObject kickPlayersNotAtRequirementsButton = null;
+
+        public event Action recheckLevelRequirements;
 
         public float inputHeldTime = 0f;
         public float nextRepeatTime = 0f;
-        private const float SettingSpacing = -0.5f;
+        private const float SettingSpacing = -0.45f;
 
         public override void Load()
         {
@@ -146,6 +151,45 @@ namespace MinimumLevel
             return setting;
         }
 
+        public GameObject CreateButtonSetting(string name, string title, Vector3 localPos, GameObject numberTemplate, Transform parent, out GameObject button, Func<int> getter, Action<int> setter)
+        {
+            GameObject setting = GameObject.Instantiate(numberTemplate, parent);
+            setting.name = name;
+            setting.transform.position = numberTemplate.transform.position;
+            setting.transform.localPosition = localPos;
+
+            setting.transform.Find("Title Text").GetComponent<TMPro.TextMeshPro>().text = title;
+
+            GameObject.Destroy(setting.GetComponent<NumberOption>());
+            GameObject.Destroy(setting.GetComponent<UIScrollbarHelper>());
+
+            button = setting.transform.Find("PlusButton").gameObject;
+
+            GameObject.Destroy(setting.transform.Find("MinusButton").gameObject);
+
+            setting.transform.Find("Value_TMP").gameObject.SetActive(false);
+
+            button.transform.localScale += new Vector3(8.3f, 0.3f, 0.02f);
+            button.transform.localPosition += new Vector3(-0.6f, 0f, 0f);
+
+            button.transform.Find("ButtonSprite").gameObject.SetActive(false);
+            var buttonText = button.transform.Find("Text_TMP").GetComponent<TMPro.TextMeshPro>();
+
+            buttonText.text = "Kick Players Now";
+            buttonText.color = Color.white;
+            buttonText.gameObject.transform.localScale += new Vector3(-0.8855f, -0.3f, 0.3f);
+
+            setting.transform.Find("ValueBox").transform.localScale += new Vector3(0.55f, 0f, 0f);
+            setting.transform.Find("ValueBox").transform.localPosition += new Vector3(0.65f, 0f, 0f);
+
+            button.GetComponent<GameOptionButton>().OnClick.AddListener((Action)(() =>
+            {
+                setter(0);
+            }));
+
+            return setting;
+        }
+
         public void CreateSettingsUI(GameObject GameOptionsMenu)
         {
             if (!customUiInGame.Value) { return; }
@@ -219,6 +263,13 @@ namespace MinimumLevel
             BigIncreaseMaxLevelButton = bigIncMax;
             BigDecreaseMaxLevelButton = bigDecMax;
 
+            kickPlayersNotAtRequirementsButton = CreateButtonSetting("Setting_KickPlayersNotAtRequirements", "Kick players not at requirements", MaximumLevelSetting.transform.localPosition + new Vector3(0f, SettingSpacing, 0f), NumberSettingTemplate.gameObject, sliderInner,
+                out GameObject button, () => 0, (v) =>
+                {
+                    recheckLevelRequirements?.Invoke();
+                }
+            );
+
             SyncSettingsUI();
         }
     }
@@ -240,6 +291,16 @@ namespace MinimumLevel
         [HarmonyPostfix]
         [HarmonyPatch(typeof(NetworkedPlayerInfo), nameof(NetworkedPlayerInfo.UpdateLevel))]
         public static void UpdateLevel_Postfix(NetworkedPlayerInfo __instance)
+        {
+            MinimumLevelPlugin.Instance.recheckLevelRequirements += () =>
+            {
+                CheckPlayerLevel(__instance);
+            };
+
+            CheckPlayerLevel(__instance);
+        }
+
+        public static void CheckPlayerLevel(NetworkedPlayerInfo __instance)
         {
             if (__instance.ClientId == AmongUsClient.Instance.ClientId) { return; }
 
